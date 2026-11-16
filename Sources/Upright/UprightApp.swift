@@ -6,7 +6,8 @@ import Vision
 final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published var status = "Starting camera…"
     @Published var motionStatus = "AirPods unavailable"
-    private let session = AVCaptureSession()
+    @Published var detectionStatus = "Waiting for camera frames…"
+    let session = AVCaptureSession()
     private let motion = CMHeadphoneMotionManager()
     private let queue = DispatchQueue(label: "upright.camera")
     private var baseline: Double?
@@ -64,16 +65,19 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         let request = VNDetectHumanBodyPoseRequest()
         do {
             try VNImageRequestHandler(cvPixelBuffer: image, options: [:]).perform([request])
-            guard let pose = request.results?.first else { missing(); return }
+            guard let pose = request.results?.first else { missing("No person detected. Move back so your head and upper body are in view."); return }
             let points = try pose.recognizedPoints(.all)
-            guard let nose = points[.nose], let left = points[.leftShoulder], let right = points[.rightShoulder], nose.confidence > 0.4, left.confidence > 0.4, right.confidence > 0.4 else { missing(); return }
+            let required: [(String, VNHumanBodyPoseObservation.JointName)] = [("Nose", .nose), ("Left shoulder", .leftShoulder), ("Right shoulder", .rightShoulder)]
+            let detail = required.map { name, joint in "\(name): \((points[joint]?.confidence ?? 0) > 0.4 ? "detected" : "not detected")" }.joined(separator: " · ")
+            DispatchQueue.main.async { self.detectionStatus = detail }
+            guard let nose = points[.nose], let left = points[.leftShoulder], let right = points[.rightShoulder], nose.confidence > 0.4, left.confidence > 0.4, right.confidence > 0.4 else { missing(detail); return }
             let width = hypot(left.location.x - right.location.x, left.location.y - right.location.y)
-            guard width > 0.05 else { missing(); return }
+            guard width > 0.05 else { missing("Shoulders appear too close together. Move closer to the camera."); return }
             let feature = (nose.location.y - (left.location.y + right.location.y) / 2) / width
             DispatchQueue.main.async { self.update(feature) }
-        } catch { missing() }
+        } catch { missing("Vision error: \(error.localizedDescription)") }
     }
-    private func missing() { DispatchQueue.main.async { self.latest = nil; self.badSince = nil; self.status = "Face and shoulders must be visible" } }
+    private func missing(_ detail: String) { DispatchQueue.main.async { self.latest = nil; self.badSince = nil; self.detectionStatus = detail; self.status = "Face and shoulders must be visible" } }
     private func update(_ value: Double) {
         latest = value
         guard let baseline else { status = "Sit comfortably upright and calibrate"; return }
@@ -89,12 +93,27 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
 }
 
 import SwiftUI
+struct CameraPreview: NSViewRepresentable {
+    let session: AVCaptureSession
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.wantsLayer = true
+        let layer = AVCaptureVideoPreviewLayer(session: session)
+        layer.videoGravity = .resizeAspect
+        view.layer = layer
+        return view
+    }
+    func updateNSView(_ view: NSView, context: Context) {}
+}
+
 struct ContentView: View {
     @StateObject private var monitor = Monitor()
     var body: some View {
         VStack(spacing: 16) {
             Text("Upright").font(.largeTitle)
+            CameraPreview(session: monitor.session).frame(height: 260)
             Text(monitor.status).font(.headline)
+            Text(monitor.detectionStatus).font(.caption).multilineTextAlignment(.center)
             Text(monitor.motionStatus).foregroundStyle(.secondary)
             Button("Calibrate upright posture") { monitor.calibrate() }
             Text("Keep your face and shoulders in view.").font(.caption)
