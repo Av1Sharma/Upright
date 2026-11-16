@@ -11,7 +11,10 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private let motion = CMHeadphoneMotionManager()
     private let queue = DispatchQueue(label: "upright.camera")
     private let landmarkConfidence: Float = 0.2
+    private enum CameraMode: String { case body = "Body landmarks", face = "Face position (limited)" }
     private var baseline: Double?
+    private var baselineMode: CameraMode?
+    private var latestMode: CameraMode?
     private var latest: Double?
     private var badSince: Date?
     private var reference: CMAttitude?
@@ -56,6 +59,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     func calibrate() {
         guard let latest else { status = "Waiting for a usable body pose"; return }
         baseline = latest
+        baselineMode = latestMode
         reference = motion.deviceMotion?.attitude.copy() as? CMAttitude
         tilt = 0; badSince = nil
         status = "Calibrated"
@@ -70,7 +74,15 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             let faceCount = faceRequest.results?.count ?? 0
             let frameSize = "\(CVPixelBufferGetWidth(image))×\(CVPixelBufferGetHeight(image))"
             guard let pose = request.results?.first else {
-                missing("Frame \(frameSize) · Faces: \(faceCount) · Body pose: not detected. Move back to show your upper body and improve lighting.")
+                if let face = faceRequest.results?.first {
+                    let value = Double(face.boundingBox.midY)
+                    DispatchQueue.main.async {
+                        self.detectionStatus = "Frame \(frameSize) · Face detected · Body pose unavailable; using face position"
+                        self.update(value, mode: .face)
+                    }
+                } else {
+                    missing("Frame \(frameSize) · No face or body pose detected")
+                }
                 return
             }
             let points = try pose.recognizedPoints(.all)
@@ -81,14 +93,20 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             let width = hypot(left.location.x - right.location.x, left.location.y - right.location.y)
             guard width > 0.05 else { missing("Shoulders appear too close together. Move closer to the camera."); return }
             let feature = (nose.location.y - (left.location.y + right.location.y) / 2) / width
-            DispatchQueue.main.async { self.update(feature) }
+            DispatchQueue.main.async { self.update(feature, mode: .body) }
         } catch { missing("Vision error: \(error.localizedDescription)") }
     }
     private func missing(_ detail: String) { DispatchQueue.main.async { self.latest = nil; self.badSince = nil; self.detectionStatus = detail; self.status = "Face and shoulders must be visible" } }
-    private func update(_ value: Double) {
+    private func update(_ value: Double, mode: CameraMode) {
         latest = value
+        latestMode = mode
         guard let baseline else { status = "Sit comfortably upright and calibrate"; return }
-        let cameraChange = value < baseline - 0.12
+        guard baselineMode == mode else {
+            badSince = nil
+            status = "Detection method changed — recalibrate"
+            return
+        }
+        let cameraChange = value < baseline - (mode == .face ? 0.06 : 0.12)
         let motionFresh = Date().timeIntervalSince(motionTime) < 3 && reference != nil
         if !motionFresh { motionStatus = "AirPods unavailable or not calibrated" }
         let changed = cameraChange || (motionFresh && tilt > 0.30)
@@ -123,7 +141,7 @@ struct ContentView: View {
             Text(monitor.detectionStatus).font(.caption).multilineTextAlignment(.center)
             Text(monitor.motionStatus).foregroundStyle(.secondary)
             Button("Calibrate upright posture") { monitor.calibrate() }
-            Text("Keep your face and shoulders in view.").font(.caption)
+            Text("Keep your face and shoulders in view. Face-only mode tracks vertical head movement; it cannot measure spine posture.").font(.caption).multilineTextAlignment(.center)
         }.padding(30).frame(minWidth: 400, minHeight: 220).onAppear { monitor.start() }
     }
 }
