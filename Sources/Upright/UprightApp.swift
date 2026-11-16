@@ -53,7 +53,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         }
     }
     func calibrate() {
-        guard let latest else { status = "Face and shoulders must be visible"; return }
+        guard let latest else { status = "Waiting for a usable body pose"; return }
         baseline = latest
         reference = motion.deviceMotion?.attitude.copy() as? CMAttitude
         tilt = 0; badSince = nil
@@ -63,12 +63,18 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         guard Date().timeIntervalSince(lastFrame) > 0.5, let image = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lastFrame = Date()
         let request = VNDetectHumanBodyPoseRequest()
+        let faceRequest = VNDetectFaceRectanglesRequest()
         do {
-            try VNImageRequestHandler(cvPixelBuffer: image, options: [:]).perform([request])
-            guard let pose = request.results?.first else { missing("No person detected. Move back so your head and upper body are in view."); return }
+            try VNImageRequestHandler(cvPixelBuffer: image, orientation: .up, options: [:]).perform([request, faceRequest])
+            let faceCount = faceRequest.results?.count ?? 0
+            let frameSize = "\(CVPixelBufferGetWidth(image))×\(CVPixelBufferGetHeight(image))"
+            guard let pose = request.results?.first else {
+                missing("Frame \(frameSize) · Faces: \(faceCount) · Body pose: not detected. Move back to show your upper body and improve lighting.")
+                return
+            }
             let points = try pose.recognizedPoints(.all)
             let required: [(String, VNHumanBodyPoseObservation.JointName)] = [("Nose", .nose), ("Left shoulder", .leftShoulder), ("Right shoulder", .rightShoulder)]
-            let detail = required.map { name, joint in "\(name): \((points[joint]?.confidence ?? 0) > 0.4 ? "detected" : "not detected")" }.joined(separator: " · ")
+            let detail = "Frame \(frameSize) · Faces: \(faceCount) · " + required.map { name, joint in "\(name): \((points[joint]?.confidence ?? 0) > 0.4 ? "detected" : "not detected")" }.joined(separator: " · ")
             DispatchQueue.main.async { self.detectionStatus = detail }
             guard let nose = points[.nose], let left = points[.leftShoulder], let right = points[.rightShoulder], nose.confidence > 0.4, left.confidence > 0.4, right.confidence > 0.4 else { missing(detail); return }
             let width = hypot(left.location.x - right.location.x, left.location.y - right.location.y)
