@@ -10,6 +10,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     let session = AVCaptureSession()
     private let motion = CMHeadphoneMotionManager()
     private let queue = DispatchQueue(label: "upright.camera")
+    private let landmarkConfidence: Float = 0.2
     private var baseline: Double?
     private var latest: Double?
     private var badSince: Date?
@@ -74,9 +75,9 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             }
             let points = try pose.recognizedPoints(.all)
             let required: [(String, VNHumanBodyPoseObservation.JointName)] = [("Nose", .nose), ("Left shoulder", .leftShoulder), ("Right shoulder", .rightShoulder)]
-            let detail = "Frame \(frameSize) · Faces: \(faceCount) · " + required.map { name, joint in "\(name): \((points[joint]?.confidence ?? 0) > 0.4 ? "detected" : "not detected")" }.joined(separator: " · ")
+            let detail = "Frame \(frameSize) · Faces: \(faceCount) · " + required.map { name, joint in "\(name): \((points[joint]?.confidence ?? 0) > self.landmarkConfidence ? "detected" : "not detected")" }.joined(separator: " · ")
             DispatchQueue.main.async { self.detectionStatus = detail }
-            guard let nose = points[.nose], let left = points[.leftShoulder], let right = points[.rightShoulder], nose.confidence > 0.4, left.confidence > 0.4, right.confidence > 0.4 else { missing(detail); return }
+            guard let nose = points[.nose], let left = points[.leftShoulder], let right = points[.rightShoulder], nose.confidence > landmarkConfidence, left.confidence > landmarkConfidence, right.confidence > landmarkConfidence else { missing(detail); return }
             let width = hypot(left.location.x - right.location.x, left.location.y - right.location.y)
             guard width > 0.05 else { missing("Shoulders appear too close together. Move closer to the camera."); return }
             let feature = (nose.location.y - (left.location.y + right.location.y) / 2) / width
