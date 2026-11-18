@@ -20,3 +20,4 @@ cat > "$APP/Info.plist" <<'PLIST'
 <key>NSMotionUsageDescription</key><string>Upright uses headphone motion to estimate changes in head tilt.</string>
 </dict></plist>
 codesign --force --deep --sign - Upright.app
+printf "\nBuild complete. Quit any running Upright app fully (Command-Q), then reopen Upright.app.\n"
