@@ -8,13 +8,13 @@ window.analyzeFrame = async (base64, id) => {
     image.src = 'data:image/jpeg;base64,' + base64;
     await image.decode();
     const result = await model.estimateSinglePose(image, {flipHorizontal: false});
-    const names = ['nose', 'leftShoulder', 'rightShoulder'];
+    const names = ['nose', 'leftEye', 'rightEye', 'leftShoulder', 'rightShoulder'];
     const points = {};
     for (const name of names) {
       const p = result.keypoints.find(item => item.part === name);
       if (p) points[name] = {x: p.position.x, y: p.position.y, confidence: p.score};
     }
-    bridge.postMessage({type: 'result', id, points});
+    bridge.postMessage({type: 'result', id, points, width: image.naturalWidth, height: image.naturalHeight});
   } catch (error) { bridge.postMessage({type: 'error', id, message: String(error)}); }
 };
 (async () => {
