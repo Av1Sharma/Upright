@@ -8,7 +8,7 @@ window.analyzeFrame = async (base64, id) => {
     image.src = 'data:image/jpeg;base64,' + base64;
     await image.decode();
     const result = await model.estimateSinglePose(image, {flipHorizontal: false});
-    const names = ['nose', 'leftShoulder', 'rightShoulder'];
+    const names = ['nose', 'leftEye', 'rightEye', 'leftShoulder', 'rightShoulder'];
     const points = {};
     for (const name of names) {
       const p = result.keypoints.find(item => item.part === name);

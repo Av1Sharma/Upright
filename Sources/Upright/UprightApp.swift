@@ -10,6 +10,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     @Published var detectionStatus = "Waiting for camera frames…"
     @Published var modelStatus = "Loading PoseNet…"
     @Published var trackingStatus = "Waiting for first estimate"
+    @Published var eyeWidthStatus = "Eye / shoulder width: unavailable"
     let session = AVCaptureSession()
     private let motion = CMHeadphoneMotionManager()
     private let poseNet = PoseNetEngine()
@@ -20,6 +21,8 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private var baselineMode: CameraMode?
     private var latestMode: CameraMode?
     private var latest: Double?
+    private var latestEyeRatio: Double?
+    private var baselineEyeRatio: Double?
     private var latestTime = Date.distantPast
     private var badSince: Date?
     private var reference: CMAttitude?
@@ -39,6 +42,8 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         poseNet.onState = { [weak self] state in
             guard let self else { return }
             self.latest = nil
+            self.latestEyeRatio = nil
+            self.baselineEyeRatio = nil
             self.badSince = nil
             switch state {
             case .loading: self.modelStatus = "Loading PoseNet…"
@@ -86,6 +91,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         guard let latest, Date().timeIntervalSince(latestTime) < 5 else { status = "Waiting for a usable body pose"; return }
         baseline = latest
         baselineMode = latestMode
+        baselineEyeRatio = latestMode == .poseNet ? latestEyeRatio : nil
         reference = motion.deviceMotion?.attitude.copy() as? CMAttitude
         tilt = 0; badSince = nil
         status = "Calibrated"
@@ -132,28 +138,31 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         } catch { missing("Vision error: \(error.localizedDescription)") }
     }
     private func handlePoseNet(_ points: [String: Any]) {
-        func point(_ name: String) -> (Double, Double, Double)? {
-            guard let item = points[name] as? [String: Any], let x = item["x"] as? Double,
-                  let y = item["y"] as? Double, let confidence = item["confidence"] as? Double,
-                  x.isFinite, y.isFinite, confidence.isFinite else { return nil }
-            return (x, y, confidence)
-        }
-        guard let nose = point("nose"), let left = point("leftShoulder"), let right = point("rightShoulder"),
-              nose.2 >= 0.3, left.2 >= 0.3, right.2 >= 0.3 else {
-            latest = nil; badSince = nil
+        guard let features = PoseFeatures(points: points) else {
+            latest = nil; latestEyeRatio = nil; badSince = nil
+            eyeWidthStatus = "Eye / shoulder width: unavailable"
             detectionStatus = "PoseNet: face or shoulders not reliably visible"
             status = "Waiting for a usable body pose"
             return
         }
-        let width = hypot(left.0 - right.0, left.1 - right.1)
-        guard width > 10 else { latest = nil; badSince = nil; status = "Move closer to the camera"; return }
-        detectionStatus = String(format: "PoseNet · shoulders %.0f%% / %.0f%%", left.2 * 100, right.2 * 100)
-        update(((left.1 + right.1) / 2 - nose.1) / width, mode: .poseNet)
+        latestEyeRatio = features.eyeToShoulderWidth
+        if let ratio = features.eyeToShoulderWidth {
+            let change = baselineMode == .poseNet ? baselineEyeRatio.map { String(format: "%+.3f", ratio - $0) } : nil
+            eyeWidthStatus = String(format: "Eye / shoulder width: %.3f · change %@", ratio, change ?? "—")
+        } else {
+            eyeWidthStatus = "Eye / shoulder width: eyes not reliably visible"
+        }
+        let left = PosePoint(points["leftShoulder"])!
+        let right = PosePoint(points["rightShoulder"])!
+        detectionStatus = String(format: "PoseNet · shoulders %.0f%% / %.0f%%", left.confidence * 100, right.confidence * 100)
+        update(features.headHeight, mode: .poseNet)
     }
     private func missing(_ detail: String) { DispatchQueue.main.async { guard self.poseNet.state != .ready else { return }; self.latest = nil; self.badSince = nil; self.detectionStatus = detail; self.status = "Face and shoulders must be visible" } }
     private func checkEstimateFreshness() {
         guard latest != nil, Date().timeIntervalSince(latestTime) >= 5 else { return }
         latest = nil
+        latestEyeRatio = nil
+        eyeWidthStatus = "Eye / shoulder width: unavailable"
         badSince = nil
         trackingStatus = "Waiting for a fresh pose estimate"
         status = "Waiting for camera updates"
@@ -205,6 +214,7 @@ struct ContentView: View {
             Text(monitor.status).font(.headline)
             Text(monitor.detectionStatus).font(.caption).multilineTextAlignment(.center)
             Text(monitor.trackingStatus).font(.caption).monospacedDigit()
+            Text(monitor.eyeWidthStatus).font(.caption).monospacedDigit()
             Text(monitor.modelStatus).foregroundStyle(.secondary)
             Text(monitor.motionStatus).foregroundStyle(.secondary)
             Button("Calibrate upright posture") { monitor.calibrate() }
