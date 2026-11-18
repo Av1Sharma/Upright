@@ -1,8 +1,12 @@
 #!/bin/sh
 set -eu
-swift build -c release
+cd "$(dirname "$0")"
+npm --prefix Comparison ci
+NODE_PATH="$PWD/Comparison/node_modules" Comparison/node_modules/.bin/esbuild Model/model.js --bundle --minify --platform=browser --outfile=Model/bundle.js
+swift build -c release --product Upright
 APP="Upright.app/Contents"
-mkdir -p "$APP/MacOS"
+mkdir -p "$APP/MacOS" "$APP/Resources/model"
+cp Model/index.html Model/bundle.js "$APP/Resources/model/"
 cp .build/release/Upright "$APP/MacOS/Upright"
 cat > "$APP/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
