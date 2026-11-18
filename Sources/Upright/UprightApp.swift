@@ -27,7 +27,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private var baselineEyeRatio: Double?
     private var latestTime = Date.distantPast
     private var landmarkTime = Date.distantPast
-    private var badSince: Date?
+    private var confirmation = PostureConfirmation()
     private var reference: CMAttitude?
     private var tilt = 0.0
     private var motionTime = Date.distantPast
@@ -48,7 +48,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             self.landmarks = []
             self.latestEyeRatio = nil
             self.baselineEyeRatio = nil
-            self.badSince = nil
+            self.confirmation.reset()
             switch state {
             case .loading: self.modelStatus = "Loading PoseNet…"
             case .ready: self.modelStatus = "PoseNet ready"
@@ -102,7 +102,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         baselineEyeRatio = latestMode == .poseNet ? latestEyeRatio : nil
         if baselineEyeRatio == nil { eyeWidthStatus = "Eye / shoulder width: no calibration baseline" }
         reference = motion.deviceMotion?.attitude.copy() as? CMAttitude
-        tilt = 0; badSince = nil
+        tilt = 0; confirmation.reset()
         status = "Calibrated"
     }
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
@@ -159,7 +159,8 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             }
         } else { landmarks = [] }
         guard let features = PoseFeatures(points: points) else {
-            latest = nil; latestEyeRatio = nil; badSince = nil
+            latest = nil; latestEyeRatio = nil
+            confirmation.observeUnavailable(at: ProcessInfo.processInfo.systemUptime)
             eyeWidthStatus = "Eye / shoulder width: unavailable"
             detectionStatus = "PoseNet: face or shoulders not reliably visible"
             status = "Waiting for a usable body pose"
@@ -177,7 +178,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         detectionStatus = String(format: "PoseNet · shoulders %.0f%% / %.0f%%", left.confidence * 100, right.confidence * 100)
         update(features.headHeight, mode: .poseNet)
     }
-    private func missing(_ detail: String) { DispatchQueue.main.async { guard self.poseNet.state != .ready else { return }; self.latest = nil; self.badSince = nil; self.detectionStatus = detail; self.status = "Face and shoulders must be visible" } }
+    private func missing(_ detail: String) { DispatchQueue.main.async { guard self.poseNet.state != .ready else { return }; self.latest = nil; self.confirmation.observeUnavailable(at: ProcessInfo.processInfo.systemUptime); self.detectionStatus = detail; self.status = "Face and shoulders must be visible" } }
     private func checkEstimateFreshness() {
         if Date().timeIntervalSince(landmarkTime) >= 5 { landmarks = [] }
         guard latest != nil, Date().timeIntervalSince(latestTime) >= 5 else { return }
@@ -185,7 +186,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         latestEyeRatio = nil
         landmarks = []
         eyeWidthStatus = "Eye / shoulder width: unavailable"
-        badSince = nil
+        confirmation.reset()
         trackingStatus = "Waiting for a fresh pose estimate"
         status = "Waiting for camera updates"
     }
@@ -199,7 +200,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         latestMode = mode
         guard let baseline else { status = "Sit comfortably upright and calibrate"; return }
         guard baselineMode == mode else {
-            badSince = nil
+            confirmation.reset()
             status = "Detection method changed — recalibrate"
             return
         }
@@ -207,10 +208,18 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         let motionFresh = Date().timeIntervalSince(motionTime) < 3 && reference != nil
         if !motionFresh { motionStatus = "AirPods unavailable or not calibrated" }
         let changed = cameraChange || (motionFresh && tilt > 0.30)
+        let now = ProcessInfo.processInfo.systemUptime
         if changed {
-            if badSince == nil { badSince = Date() }
-            status = Date().timeIntervalSince(badSince!) > 10 ? "Posture changed — check your position" : "Checking posture…"
-        } else { badSince = nil; status = "Posture near baseline" }
+            let progress = confirmation.observeChanged(at: now)
+            if progress >= confirmation.required {
+                status = "Posture changed — check your position"
+            } else {
+                status = "Checking posture… \(Int(progress))/\(Int(confirmation.required))s"
+            }
+        } else {
+            confirmation.observeNotChanged(at: now)
+            status = "Posture near baseline"
+        }
     }
 }
 
