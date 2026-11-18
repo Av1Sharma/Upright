@@ -1,6 +1,6 @@
 # Upright 
 
-A macOS 14+ posture detection prototype using the Mac camera and optional compatible AirPods. Camera images are processed locally and are not saved. Sit with your face and shoulders visible, then calibrate while comfortably upright. The app reports a sustained change after ten seconds. Model being used is here (https://developer.apple.com/documentation/vision/detecting-human-body-poses-in-images).
+A macOS 14+ posture detection prototype using the Mac camera and optional compatible AirPods. Camera images are processed locally and are not saved. Sit with your face and shoulders visible, then calibrate while comfortably upright. The app reports a sustained change after four seconds. Model being used is here (https://developer.apple.com/documentation/vision/detecting-human-body-poses-in-images).
 
 ## Run
 

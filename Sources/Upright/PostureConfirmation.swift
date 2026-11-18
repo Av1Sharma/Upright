@@ -7,7 +7,7 @@ struct PostureConfirmation {
     private(set) var evidence: TimeInterval = 0
     private var lastChanged: TimeInterval?
     private var lastSampleWasChanged = false
-    let required: TimeInterval = 10
+    let required: TimeInterval = 4
     let interruptionGrace: TimeInterval = 2
     let maxSampleGap: TimeInterval = 5
 

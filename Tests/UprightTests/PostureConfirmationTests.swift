@@ -2,8 +2,8 @@ import Foundation
 @main struct PostureConfirmationTests {
     static func main() {
         var tracker = PostureConfirmation()
-        for time in 0...10 { _ = tracker.observeChanged(at: Double(time)) }
-        precondition(tracker.evidence == 10, "Continuous evidence should confirm")
+        for time in 0...4 { _ = tracker.observeChanged(at: Double(time)) }
+        precondition(tracker.evidence == 4, "Continuous evidence should confirm")
         tracker.reset()
         _ = tracker.observeChanged(at: 0)
         _ = tracker.observeChanged(at: 1)
