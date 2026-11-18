@@ -1,0 +1,8 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>
+html,body{background:#fff}body{font:15px -apple-system,sans-serif;margin:24px;color:#20242a}h1{font-size:24px}button{padding:10px 18px;font-size:15px}button:disabled{opacity:.5}.panels{display:flex;gap:16px;flex-wrap:wrap}.panel{flex:1;min-width:300px}canvas{width:100%;height:auto;background:#eee}p{line-height:1.4}.subtle{color:#555}
+</style></head><body>
+<h1>Shoulder detector comparison</h1><p>Use a normal seated position with relaxed arms. Both panels show the same camera frame; circles are each detector’s shoulder estimates. Check whether they actually land on your shoulders.</p>
+<button id="capture" disabled>Compare current frame</button> <span id="status" role="status">Loading PoseNet…</span>
+<div class="panels"><div class="panel"><h2>Apple Vision</h2><canvas id="vision"></canvas><p id="visionResult">Waiting for a frame.</p></div><div class="panel"><h2>PoseNet</h2><canvas id="posenet"></canvas><p id="posenetResult">Waiting for a frame.</p></div></div>
+<p class="subtle">Frames stay in memory on this Mac. PoseNet’s model files are downloaded from Google on first load. Scores describe model confidence, not verified accuracy.</p>
+<script src="bundle.js"></script></body></html>
