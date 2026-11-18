@@ -9,6 +9,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     @Published var motionStatus = "AirPods unavailable"
     @Published var detectionStatus = "Waiting for camera frames…"
     @Published var modelStatus = "Loading PoseNet…"
+    @Published var trackingStatus = "Waiting for first estimate"
     let session = AVCaptureSession()
     private let motion = CMHeadphoneMotionManager()
     private let poseNet = PoseNetEngine()
@@ -25,8 +26,16 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private var tilt = 0.0
     private var motionTime = Date.distantPast
     private var lastFrame = Date.distantPast
+    private var estimateCount = 0
+    private var watchdog: Timer?
+    private var started = false
 
     func start() {
+        guard !started else { return }
+        started = true
+        watchdog = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.checkEstimateFreshness()
+        }
         poseNet.onState = { [weak self] state in
             guard let self else { return }
             self.latest = nil
@@ -65,6 +74,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             }
             self.session.addInput(input)
             let output = AVCaptureVideoDataOutput()
+            output.alwaysDiscardsLateVideoFrames = true
             output.setSampleBufferDelegate(self, queue: self.queue)
             guard self.session.canAddOutput(output) else { DispatchQueue.main.async { self.status = "Camera output unavailable" }; return }
             self.session.addOutput(output)
@@ -84,14 +94,15 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         guard Date().timeIntervalSince(lastFrame) > 0.5, let image = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lastFrame = Date()
         let frame = CIImage(cvPixelBuffer: image)
-        DispatchQueue.main.async {
-            if self.poseNet.state == .ready { self.poseNet.submit(frame) }
+        let usePoseNet = DispatchQueue.main.sync { self.poseNet.state == .ready }
+        if usePoseNet {
+            DispatchQueue.main.async { self.poseNet.submit(frame) }
+            return
         }
         let request = VNDetectHumanBodyPoseRequest()
         let faceRequest = VNDetectFaceRectanglesRequest()
         // Vision remains available while PoseNet loads or when model loading fails.
         // Ignore its results once PoseNet is ready so measurements never mix.
-        if DispatchQueue.main.sync(execute: { self.poseNet.state == .ready }) { return }
         do {
             try VNImageRequestHandler(cvPixelBuffer: image, orientation: .up, options: [:]).perform([request, faceRequest])
             let faceCount = faceRequest.results?.count ?? 0
@@ -140,7 +151,17 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         update(((left.1 + right.1) / 2 - nose.1) / width, mode: .poseNet)
     }
     private func missing(_ detail: String) { DispatchQueue.main.async { guard self.poseNet.state != .ready else { return }; self.latest = nil; self.badSince = nil; self.detectionStatus = detail; self.status = "Face and shoulders must be visible" } }
+    private func checkEstimateFreshness() {
+        guard latest != nil, Date().timeIntervalSince(latestTime) >= 5 else { return }
+        latest = nil
+        badSince = nil
+        trackingStatus = "Waiting for a fresh pose estimate"
+        status = "Waiting for camera updates"
+    }
     private func update(_ value: Double, mode: CameraMode) {
+        estimateCount += 1
+        let delta = baseline.map { String(format: "%+.3f", value - $0) } ?? "—"
+        trackingStatus = String(format: "Estimate %d · pose %.3f · change %@", estimateCount, value, delta)
         latest = value
         latestTime = Date()
         latestMode = mode
@@ -183,6 +204,7 @@ struct ContentView: View {
             CameraPreview(session: monitor.session).frame(height: 260)
             Text(monitor.status).font(.headline)
             Text(monitor.detectionStatus).font(.caption).multilineTextAlignment(.center)
+            Text(monitor.trackingStatus).font(.caption).monospacedDigit()
             Text(monitor.modelStatus).foregroundStyle(.secondary)
             Text(monitor.motionStatus).foregroundStyle(.secondary)
             Button("Calibrate upright posture") { monitor.calibrate() }
