@@ -9,7 +9,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     @Published var motionStatus = "AirPods unavailable"
     @Published var detectionStatus = "Waiting for camera frames…"
     @Published var modelStatus = "Loading PoseNet…"
-    @Published var trackingStatus = "Waiting for first estimate"
+    @Published var trackingStatus = "Head / shoulder height: unavailable"
     @Published var eyeWidthStatus = "Eye / shoulder width: unavailable"
     @Published var landmarks: [OverlayPoint] = []
     @Published var landmarkImageSize: CGSize = .zero
@@ -100,6 +100,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         baseline = latest
         baselineMode = latestMode
         baselineEyeRatio = latestMode == .poseNet ? latestEyeRatio : nil
+        if baselineEyeRatio == nil { eyeWidthStatus = "Eye / shoulder width: no calibration baseline" }
         reference = motion.deviceMotion?.attitude.copy() as? CMAttitude
         tilt = 0; badSince = nil
         status = "Calibrated"
@@ -190,8 +191,9 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     }
     private func update(_ value: Double, mode: CameraMode) {
         estimateCount += 1
-        let delta = baseline.map { String(format: "%+.3f", value - $0) } ?? "—"
-        trackingStatus = String(format: "Estimate %d · pose %.3f · change %@", estimateCount, value, delta)
+        let delta = baselineMode == mode ? baseline.map { String(format: "%+.3f", value - $0) } : nil
+        let measurement = mode == .face ? "Face height (frame)" : "Head / shoulder height"
+        trackingStatus = String(format: "Estimate %d · %@ %.3f · change %@", estimateCount, measurement, value, delta ?? "—")
         latest = value
         latestTime = Date()
         latestMode = mode
