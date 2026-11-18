@@ -11,6 +11,8 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     @Published var modelStatus = "Loading PoseNet…"
     @Published var trackingStatus = "Waiting for first estimate"
     @Published var eyeWidthStatus = "Eye / shoulder width: unavailable"
+    @Published var landmarks: [OverlayPoint] = []
+    @Published var landmarkImageSize: CGSize = .zero
     let session = AVCaptureSession()
     private let motion = CMHeadphoneMotionManager()
     private let poseNet = PoseNetEngine()
@@ -24,6 +26,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private var latestEyeRatio: Double?
     private var baselineEyeRatio: Double?
     private var latestTime = Date.distantPast
+    private var landmarkTime = Date.distantPast
     private var badSince: Date?
     private var reference: CMAttitude?
     private var tilt = 0.0
@@ -42,6 +45,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         poseNet.onState = { [weak self] state in
             guard let self else { return }
             self.latest = nil
+            self.landmarks = []
             self.latestEyeRatio = nil
             self.baselineEyeRatio = nil
             self.badSince = nil
@@ -83,6 +87,10 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             output.setSampleBufferDelegate(self, queue: self.queue)
             guard self.session.canAddOutput(output) else { DispatchQueue.main.async { self.status = "Camera output unavailable" }; return }
             self.session.addOutput(output)
+            if let connection = output.connection(with: .video), connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = false
+            }
             self.session.startRunning()
             DispatchQueue.main.async { self.status = "Sit comfortably upright and calibrate" }
         }
@@ -137,7 +145,18 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             DispatchQueue.main.async { if self.poseNet.state != .ready { self.update(feature, mode: .body) } }
         } catch { missing("Vision error: \(error.localizedDescription)") }
     }
-    private func handlePoseNet(_ points: [String: Any]) {
+    private func handlePoseNet(_ result: [String: Any]) {
+        let points = result["points"] as? [String: Any] ?? [:]
+        if let width = result["width"] as? Double, let height = result["height"] as? Double,
+           width.isFinite, height.isFinite, width > 0, height > 0 {
+            landmarkTime = Date()
+            landmarkImageSize = CGSize(width: width, height: height)
+            landmarks = ["nose", "leftEye", "rightEye", "leftShoulder", "rightShoulder"].compactMap { name in
+                guard let p = PosePoint(points[name]), p.confidence >= 0.3,
+                      p.x >= 0, p.y >= 0, p.x <= width, p.y <= height else { return nil }
+                return OverlayPoint(name: name, x: p.x / width, y: p.y / height)
+            }
+        } else { landmarks = [] }
         guard let features = PoseFeatures(points: points) else {
             latest = nil; latestEyeRatio = nil; badSince = nil
             eyeWidthStatus = "Eye / shoulder width: unavailable"
@@ -159,9 +178,11 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     }
     private func missing(_ detail: String) { DispatchQueue.main.async { guard self.poseNet.state != .ready else { return }; self.latest = nil; self.badSince = nil; self.detectionStatus = detail; self.status = "Face and shoulders must be visible" } }
     private func checkEstimateFreshness() {
+        if Date().timeIntervalSince(landmarkTime) >= 5 { landmarks = [] }
         guard latest != nil, Date().timeIntervalSince(latestTime) >= 5 else { return }
         latest = nil
         latestEyeRatio = nil
+        landmarks = []
         eyeWidthStatus = "Eye / shoulder width: unavailable"
         badSince = nil
         trackingStatus = "Waiting for a fresh pose estimate"
@@ -199,10 +220,40 @@ struct CameraPreview: NSViewRepresentable {
         view.wantsLayer = true
         let layer = AVCaptureVideoPreviewLayer(session: session)
         layer.videoGravity = .resizeAspect
+        if let connection = layer.connection, connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = false
+        }
         view.layer = layer
         return view
     }
-    func updateNSView(_ view: NSView, context: Context) {}
+    func updateNSView(_ view: NSView, context: Context) {
+        if let layer = view.layer as? AVCaptureVideoPreviewLayer,
+           let connection = layer.connection, connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = false
+        }
+    }
+}
+
+struct LandmarkOverlay: View {
+    let points: [OverlayPoint]
+    let imageSize: CGSize
+    var body: some View {
+        GeometryReader { geometry in
+            Canvas { context, size in
+                guard let rect = LandmarkLayout.imageRect(imageSize: imageSize, containerSize: size) else { return }
+                for point in points {
+                    let x = rect.minX + point.x * rect.width
+                    let y = rect.minY + point.y * rect.height
+                    let dot = CGRect(x: x - 5, y: y - 5, width: 10, height: 10)
+                    context.fill(Path(ellipseIn: dot), with: .color(.yellow))
+                    context.stroke(Path(ellipseIn: dot), with: .color(.black), lineWidth: 1.5)
+                }
+            }
+            .accessibilityLabel("Detected nose, eyes and shoulder landmarks")
+        }.allowsHitTesting(false)
+    }
 }
 
 struct ContentView: View {
@@ -210,7 +261,9 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 16) {
             Text("Upright").font(.largeTitle)
-            CameraPreview(session: monitor.session).frame(height: 260)
+            CameraPreview(session: monitor.session)
+                .overlay { LandmarkOverlay(points: monitor.landmarks, imageSize: monitor.landmarkImageSize) }
+                .frame(height: 260)
             Text(monitor.status).font(.headline)
             Text(monitor.detectionStatus).font(.caption).multilineTextAlignment(.center)
             Text(monitor.trackingStatus).font(.caption).monospacedDigit()

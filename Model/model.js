@@ -14,7 +14,7 @@ window.analyzeFrame = async (base64, id) => {
       const p = result.keypoints.find(item => item.part === name);
       if (p) points[name] = {x: p.position.x, y: p.position.y, confidence: p.score};
     }
-    bridge.postMessage({type: 'result', id, points});
+    bridge.postMessage({type: 'result', id, points, width: image.naturalWidth, height: image.naturalHeight});
   } catch (error) { bridge.postMessage({type: 'error', id, message: String(error)}); }
 };
 (async () => {

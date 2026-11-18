@@ -78,7 +78,7 @@ final class PoseNetEngine: NSObject, WKScriptMessageHandler {
             guard let id = body["id"] as? Int, pendingID == id, state == .ready else { return }
             pendingID = nil
             guard Date().timeIntervalSince(pendingCaptureTime) < 5 else { return }
-            onResult?(body["points"] as? [String: Any] ?? [:])
+            onResult?(body)
         default: break
         }
     }
