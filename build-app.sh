@@ -16,8 +16,9 @@ cat > "$APP/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>com.upright.prototype</string>
 <key>CFBundleName</key><string>Upright</string>
 <key>CFBundlePackageType</key><string>APPL</string>
+<key>LSUIElement</key><true/>
 <key>NSCameraUsageDescription</key><string>Upright uses the camera to estimate your posture locally.</string>
 <key>NSMotionUsageDescription</key><string>Upright uses headphone motion to estimate changes in head tilt.</string>
 </dict></plist>
 codesign --force --deep --sign - Upright.app
-printf "\nBuild complete. Quit any running Upright app fully (Command-Q), then reopen Upright.app.\n"
+printf "\nBuild complete. Quit Upright from its menu-bar icon, then reopen Upright.app.\n"

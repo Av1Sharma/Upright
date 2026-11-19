@@ -270,5 +270,6 @@ struct LandmarkOverlay: View {
 }
 
 @main struct UprightApp: App {
-    var body: some Scene { WindowGroup { ContentView() }.defaultSize(width: 660, height: 780) }
+    @NSApplicationDelegateAdaptor(UprightAppDelegate.self) private var delegate
+    var body: some Scene { Settings { EmptyView() } }
 }

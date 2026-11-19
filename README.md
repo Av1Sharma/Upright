@@ -1,10 +1,10 @@
-# Upright 
+# Upright
 
 A macOS 14+ posture detection prototype using the Mac camera and optional compatible AirPods. Camera images are processed locally and are not saved. Sit with your face and shoulders visible, then calibrate while comfortably upright. The app reports a sustained change after four seconds. Model being used is here (https://developer.apple.com/documentation/vision/detecting-human-body-poses-in-images).
 
 ## Run
 
-Install Swift command-line tools, run `./build-app.sh`, then open `Upright.app`. Grant camera access and, when requested, motion access. The AirPods are optional btw. 
+Install Swift command-line tools, run `./build-app.sh`, then open `Upright.app`. Upright starts in the macOS menu bar. Select its icon to open the window, calibrate, or quit; closing the window keeps monitoring active. Grant camera access and, when requested, motion access. The AirPods are optional btw.
 
 ## Plan and current state
 
@@ -12,7 +12,7 @@ Install Swift command-line tools, run `./build-app.sh`, then open `Upright.app`.
 2. Calibrate a camera baseline and optional headphone attitude. **Implemented.**
 3. Detect sustained deviations using both signals, allowing camera-only operation. **Prototype rules implemented.**
 4. Collect consented, labeled real-world examples and evaluate false alerts and missed changes across users, lighting, poses, and camera positions. Tune thresholds or train a classifier from those results.
-5. Add notifications, reconnection handling, robust calibration, and automated sensor integration tests before release. 
+5. Add notifications, reconnection handling, robust calibration, and automated sensor integration tests before release.
 
 The current fixed thresholds are experimental, not validated posture measurements. A front-facing camera cannot reliably measure forward head translation or spine curvature, and head tilt alone does not identify a slouch. Looking down can trigger the motion rule. Recalibrate after changing position, camera angle, or headphones. The app displays an in-window status rather than sending notifications.
 

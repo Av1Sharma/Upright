@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var monitor = Monitor()
+    @ObservedObject var monitor: Monitor
     @State private var showLandmarks = true
     @State private var showDetails = false
 
@@ -51,7 +51,6 @@ struct ContentView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .frame(minWidth: 420, minHeight: 520)
-        .onAppear { monitor.start() }
     }
 
     private var controls: some View {
