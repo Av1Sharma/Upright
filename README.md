@@ -24,6 +24,6 @@ Sit normally with relaxed arms and click **Compare current frame**. The panels s
 
 ## Posture measurements
 
-During PoseNet tracking, yellow markers show the detected nose, eyes and shoulders over the live camera preview. The overlay follows the latest completed inference and may lag slightly behind your movement. Only points with sufficient model confidence are shown; verify that they land on the intended features.
+Open **Tracking details** in the app to see the detector status and measurement values. Use the **Landmarks** switch above the camera preview to show or hide markers. During PoseNet tracking, yellow markers show the detected nose, eyes and shoulders over the live camera preview. The overlay follows the latest completed inference and may lag slightly behind your movement. Only points with sufficient model confidence are shown; verify that they land on the intended features.
 
 The **head / shoulder height** is the nose-to-shoulder-midpoint vertical distance divided by shoulder width. **Eye / shoulder width** is eye spacing divided by shoulder width. Each change is relative to the most recent calibration from the same detection method. Eye spacing is unavailable when the eyes cannot be confidently detected; calibrate again when they are visible to set its baseline. Camera framing, head rotation and distance can affect these values, which are experimental posture-change signals, not measurements of spinal curvature. The new eye-spacing measurement does not change the existing posture classification.

@@ -6,6 +6,7 @@ import Vision
 
 final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published var status = "Starting camera…"
+    @Published private(set) var isCalibrated = false
     @Published var motionStatus = "AirPods unavailable"
     @Published var detectionStatus = "Waiting for camera frames…"
     @Published var modelStatus = "Loading PoseNet…"
@@ -98,6 +99,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     func calibrate() {
         guard let latest, Date().timeIntervalSince(latestTime) < 5 else { status = "Waiting for a usable body pose"; return }
         baseline = latest
+        isCalibrated = true
         baselineMode = latestMode
         baselineEyeRatio = latestMode == .poseNet ? latestEyeRatio : nil
         if baselineEyeRatio == nil { eyeWidthStatus = "Eye / shoulder width: no calibration baseline" }
@@ -267,25 +269,6 @@ struct LandmarkOverlay: View {
     }
 }
 
-struct ContentView: View {
-    @StateObject private var monitor = Monitor()
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Upright").font(.largeTitle)
-            CameraPreview(session: monitor.session)
-                .overlay { LandmarkOverlay(points: monitor.landmarks, imageSize: monitor.landmarkImageSize) }
-                .frame(height: 260)
-            Text(monitor.status).font(.headline)
-            Text(monitor.detectionStatus).font(.caption).multilineTextAlignment(.center)
-            Text(monitor.trackingStatus).font(.caption).monospacedDigit()
-            Text(monitor.eyeWidthStatus).font(.caption).monospacedDigit()
-            Text(monitor.modelStatus).foregroundStyle(.secondary)
-            Text(monitor.motionStatus).foregroundStyle(.secondary)
-            Button("Calibrate upright posture") { monitor.calibrate() }
-            Text("Keep your face and shoulders in view. Face-only mode tracks vertical head movement; it cannot measure spine posture.").font(.caption).multilineTextAlignment(.center)
-        }.padding(30).frame(minWidth: 400, minHeight: 220).onAppear { monitor.start() }
-    }
-}
 @main struct UprightApp: App {
-    var body: some Scene { WindowGroup { ContentView() } }
+    var body: some Scene { WindowGroup { ContentView() }.defaultSize(width: 660, height: 780) }
 }
