@@ -75,6 +75,9 @@ struct ContentView: View {
                 Text("Your posture, at a glance").font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer()
+            Button("Quit Upright") { NSApplication.shared.terminate(nil) }
+                .keyboardShortcut("q", modifiers: .command)
+                .help("Quit Upright and stop posture monitoring")
         }
     }
 
