@@ -2,41 +2,39 @@ import AppKit
 import SwiftUI
 
 /// Owns monitoring for the lifetime of the menu-bar app, independent of windows.
-final class UprightAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class UprightAppDelegate: NSObject, NSApplicationDelegate {
     private let monitor = Monitor()
     private var statusItem: NSStatusItem!
+    private let popover = NSPopover()
     private var window: NSWindow?
-    private let statusLine = NSMenuItem(title: "Starting camera…", action: nil, keyEquivalent: "")
-    private let calibrationItem = NSMenuItem(title: "Calibrate posture", action: #selector(calibrate), keyEquivalent: "")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(systemSymbolName: "figure.seated.side", accessibilityDescription: "Upright posture monitor")
         statusItem.button?.toolTip = "Upright"
-        let menu = NSMenu()
-        menu.delegate = self
-        statusLine.isEnabled = false
-        menu.addItem(statusLine)
-        menu.addItem(.separator())
-        let open = NSMenuItem(title: "Open Upright", action: #selector(openWindow), keyEquivalent: "")
-        open.target = self
-        menu.addItem(open)
-        calibrationItem.target = self
-        menu.addItem(calibrationItem)
-        menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit Upright", action: #selector(quit), keyEquivalent: "q")
-        quit.target = self
-        menu.addItem(quit)
-        statusItem.menu = menu
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(togglePopover)
+        popover.behavior = .transient
+        popover.contentSize = NSSize(width: 360, height: 430)
+        popover.contentViewController = NSHostingController(rootView: MenuBarView(
+            monitor: monitor,
+            openDetails: { [weak self] in self?.openWindow() },
+            quit: { NSApp.terminate(nil) }
+        ))
         monitor.start()
     }
 
-    func menuWillOpen(_ menu: NSMenu) {
-        statusLine.title = monitor.status
-        calibrationItem.title = monitor.isCalibrated ? "Recalibrate posture" : "Calibrate posture"
+    @objc private func togglePopover() {
+        if popover.isShown {
+            popover.performClose(nil)
+        } else if let button = statusItem.button {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
     }
 
-    @objc private func openWindow() {
+    private func openWindow() {
+        popover.performClose(nil)
         if window == nil {
             let controller = NSHostingController(rootView: ContentView(monitor: monitor))
             let newWindow = NSWindow(contentViewController: controller)
@@ -52,7 +50,5 @@ final class UprightAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    @objc private func calibrate() { monitor.calibrate() }
-    @objc private func quit() { NSApp.terminate(nil) }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }

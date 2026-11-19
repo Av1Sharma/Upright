@@ -4,7 +4,7 @@ A macOS 14+ posture detection prototype using the Mac camera and optional compat
 
 ## Run
 
-Install Swift command-line tools, run `./build-app.sh`, then open `Upright.app`. Upright starts in the macOS menu bar. Select its icon to open the window, calibrate, or quit; closing the window keeps monitoring active. Grant camera access and, when requested, motion access. The AirPods are optional btw.
+Install Swift command-line tools, run `./build-app.sh`, then open `Upright.app`. Upright starts in the macOS menu bar. Select its icon to see the camera, calibrate, open the detailed window, or quit; closing the window keeps monitoring active. Grant camera access and, when requested, motion access. The AirPods are optional btw.
 
 ## Plan and current state
 

@@ -140,7 +140,7 @@ struct ContentView: View {
             Text("Sit comfortably upright, look at your screen, then calibrate. Recalibrate if you move your laptop or change your seating position.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button(action: monitor.calibrate) {
+            Button(action: { monitor.calibrate() }) {
                 Label(monitor.isCalibrated ? "Recalibrate posture" : "Calibrate posture", systemImage: "scope")
                     .frame(minHeight: 24)
             }
