@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var monitor = Monitor()
+    @ObservedObject var monitor: Monitor
     @State private var showLandmarks = true
     @State private var showDetails = false
 
@@ -18,27 +18,48 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                header
-                cameraCard
-                statusCard
-                calibrationCard
-                diagnostics
-                HStack(spacing: 6) {
-                    Image(systemName: "lock.shield")
-                    Text("Camera frames are processed on this Mac.")
+        GeometryReader { geometry in
+            let wide = geometry.size.width >= 860
+            let padding: CGFloat = geometry.size.width < 560 ? 16 : 24
+            let sidebarWidth: CGFloat = min(360, max(300, geometry.size.width * 0.30))
+            let cameraWidth = max(240, geometry.size.width - padding * 2 - (wide ? sidebarWidth + 18 : 0) - 32)
+            let cameraHeight = min(600, max(190, cameraWidth * 9 / 16))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    if wide {
+                        HStack(alignment: .top, spacing: 18) {
+                            cameraCard(height: cameraHeight)
+                                .frame(maxWidth: .infinity)
+                            controls
+                                .frame(width: sidebarWidth)
+                        }
+                    } else {
+                        cameraCard(height: cameraHeight)
+                        controls
+                    }
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.shield").accessibilityHidden(true)
+                        Text("Camera frames are processed on this Mac.")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .padding(padding)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: 720)
-            .padding(24)
-            .frame(maxWidth: .infinity)
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .frame(minWidth: 420, minHeight: 520)
-        .onAppear { monitor.start() }
+    }
+
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            statusCard
+            calibrationCard
+            diagnostics
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var header: some View {
@@ -54,10 +75,13 @@ struct ContentView: View {
                 Text("Your posture, at a glance").font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer()
+            Button("Quit Upright") { NSApplication.shared.terminate(nil) }
+                .keyboardShortcut("q", modifiers: .command)
+                .help("Quit Upright and stop posture monitoring")
         }
     }
 
-    private var cameraCard: some View {
+    private func cameraCard(height: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("Camera", systemImage: "video")
@@ -75,7 +99,7 @@ struct ContentView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 280)
+                .frame(height: height)
                 .background(Color.black.opacity(0.9))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .accessibilityLabel("Live camera preview")
@@ -100,7 +124,7 @@ struct ContentView: View {
                 Text(monitor.status)
                     .font(.headline)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Tracking changes from your calibrated position.")
+                Text(monitor.isCalibrated ? "Tracking changes from your calibrated position." : "Calibrate below to start tracking posture changes.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -116,8 +140,8 @@ struct ContentView: View {
             Text("Sit comfortably upright, look at your screen, then calibrate. Recalibrate if you move your laptop or change your seating position.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button(action: monitor.calibrate) {
-                Label("Calibrate posture", systemImage: "scope")
+            Button(action: { monitor.calibrate() }) {
+                Label(monitor.isCalibrated ? "Recalibrate posture" : "Calibrate posture", systemImage: "scope")
                     .frame(minHeight: 24)
             }
             .buttonStyle(.borderedProminent)

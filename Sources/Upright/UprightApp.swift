@@ -6,6 +6,7 @@ import Vision
 
 final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published var status = "Starting camera…"
+    @Published private(set) var isCalibrated = false
     @Published var motionStatus = "AirPods unavailable"
     @Published var detectionStatus = "Waiting for camera frames…"
     @Published var modelStatus = "Loading PoseNet…"
@@ -95,15 +96,18 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             DispatchQueue.main.async { self.status = "Sit comfortably upright and calibrate" }
         }
     }
-    func calibrate() {
-        guard let latest, Date().timeIntervalSince(latestTime) < 5 else { status = "Waiting for a usable body pose"; return }
+    @discardableResult
+    func calibrate() -> Bool {
+        guard let latest, Date().timeIntervalSince(latestTime) < 5 else { status = "Waiting for a usable body pose"; return false }
         baseline = latest
+        isCalibrated = true
         baselineMode = latestMode
         baselineEyeRatio = latestMode == .poseNet ? latestEyeRatio : nil
         if baselineEyeRatio == nil { eyeWidthStatus = "Eye / shoulder width: no calibration baseline" }
         reference = motion.deviceMotion?.attitude.copy() as? CMAttitude
         tilt = 0; confirmation.reset()
         status = "Calibrated"
+        return true
     }
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard Date().timeIntervalSince(lastFrame) > 0.5, let image = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
@@ -268,5 +272,6 @@ struct LandmarkOverlay: View {
 }
 
 @main struct UprightApp: App {
-    var body: some Scene { WindowGroup { ContentView() }.defaultSize(width: 660, height: 780) }
+    @NSApplicationDelegateAdaptor(UprightAppDelegate.self) private var delegate
+    var body: some Scene { Settings { EmptyView() } }
 }
