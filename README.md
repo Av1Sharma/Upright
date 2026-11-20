@@ -12,9 +12,22 @@ Install Swift command-line tools, run `./build-app.sh`, then open `Upright.app`.
 2. Calibrate a camera baseline and optional headphone attitude. **Implemented.**
 3. Detect sustained deviations using both signals, allowing camera-only operation. **Prototype rules implemented.**
 4. Collect consented, labeled real-world examples and evaluate false alerts and missed changes across users, lighting, poses, and camera positions. Tune thresholds or train a classifier from those results.
-5. Add notifications, reconnection handling, robust calibration, and automated sensor integration tests before release.
+5. Send a macOS notification for a sustained posture change. **Implemented.**
+6. Add reconnection handling, robust calibration, and automated sensor integration tests before release.
 
-The current fixed thresholds are experimental, not validated posture measurements. A front-facing camera cannot reliably measure forward head translation or spine curvature, and head tilt alone does not identify a slouch. Looking down can trigger the motion rule. Recalibrate after changing position, camera angle, or headphones. The app displays an in-window status rather than sending notifications.
+The current fixed thresholds are experimental, not validated posture measurements. A front-facing camera cannot reliably measure forward head translation or spine curvature, and head tilt alone does not identify a slouch. Looking down can trigger the motion rule. Recalibrate after changing position, camera angle, or headphones.
+
+## Posture notifications
+
+The first successful calibration requests macOS notification permission. Allow notifications to receive a banner and sound when a posture change has been confirmed for four seconds, including while the detailed window is closed or the app is in the foreground. There is one alert per sustained change. Four seconds of observed posture near baseline rearms the next alert; brief recoveries and missing camera estimates do not. Recalibration also resets alerts without sending a notification.
+
+If you deny permission, monitoring and the in-app status still work. Enable notifications later in **System Settings → Notifications → Upright**. macOS notification settings and Focus can silence or delay alerts. Notifications are local and contain no camera images. Foreground presentation and permission handling use Apple's [UserNotifications framework](https://developer.apple.com/documentation/usernotifications/unusernotificationcenter).
+
+## Verify changes
+
+Run `./test.sh` for the posture confirmation, notification policy, pose feature, and landmark layout checks. Run `./build-app.sh` to build and sign the app bundle.
+
+For a manual notification check, quit and reopen the rebuilt app, calibrate, and allow notifications. Move away from your calibrated posture until the status confirms a change after four seconds. Expect one notification and no repeats while holding that position. Return near baseline for at least four seconds, then change posture again to receive another alert. Repeat with the detailed window open and closed. Deny notification permission in System Settings and verify that the in-app status still updates without alerts. Brief returns to baseline, missing landmarks, and recalibration should not themselves notify.
 
 ## Compare shoulder detectors
 
