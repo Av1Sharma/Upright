@@ -29,6 +29,8 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private var latestTime = Date.distantPast
     private var landmarkTime = Date.distantPast
     private var confirmation = PostureConfirmation()
+    private var alerts = PostureAlertPolicy()
+    private let notifications = PostureNotifications()
     private var reference: CMAttitude?
     private var tilt = 0.0
     private var motionTime = Date.distantPast
@@ -50,6 +52,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             self.latestEyeRatio = nil
             self.baselineEyeRatio = nil
             self.confirmation.reset()
+            self.alerts.interruptRecovery()
             switch state {
             case .loading: self.modelStatus = "Loading PoseNet…"
             case .ready: self.modelStatus = "PoseNet ready"
@@ -106,6 +109,8 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         if baselineEyeRatio == nil { eyeWidthStatus = "Eye / shoulder width: no calibration baseline" }
         reference = motion.deviceMotion?.attitude.copy() as? CMAttitude
         tilt = 0; confirmation.reset()
+        alerts.reset()
+        notifications.requestAuthorization()
         status = "Calibrated"
         return true
     }
@@ -165,6 +170,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         guard let features = PoseFeatures(points: points) else {
             latest = nil; latestEyeRatio = nil
             confirmation.observeUnavailable(at: ProcessInfo.processInfo.systemUptime)
+            alerts.interruptRecovery()
             eyeWidthStatus = "Eye / shoulder width: unavailable"
             detectionStatus = "PoseNet: face or shoulders not reliably visible"
             status = "Waiting for a usable body pose"
@@ -182,7 +188,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         detectionStatus = String(format: "PoseNet · shoulders %.0f%% / %.0f%%", left.confidence * 100, right.confidence * 100)
         update(features.headHeight, mode: .poseNet)
     }
-    private func missing(_ detail: String) { DispatchQueue.main.async { guard self.poseNet.state != .ready else { return }; self.latest = nil; self.confirmation.observeUnavailable(at: ProcessInfo.processInfo.systemUptime); self.detectionStatus = detail; self.status = "Face and shoulders must be visible" } }
+    private func missing(_ detail: String) { DispatchQueue.main.async { guard self.poseNet.state != .ready else { return }; self.latest = nil; self.confirmation.observeUnavailable(at: ProcessInfo.processInfo.systemUptime); self.alerts.interruptRecovery(); self.detectionStatus = detail; self.status = "Face and shoulders must be visible" } }
     private func checkEstimateFreshness() {
         if Date().timeIntervalSince(landmarkTime) >= 5 { landmarks = [] }
         guard latest != nil, Date().timeIntervalSince(latestTime) >= 5 else { return }
@@ -191,6 +197,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         landmarks = []
         eyeWidthStatus = "Eye / shoulder width: unavailable"
         confirmation.reset()
+        alerts.interruptRecovery()
         trackingStatus = "Waiting for a fresh pose estimate"
         status = "Waiting for camera updates"
     }
@@ -205,6 +212,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         guard let baseline else { status = "Sit comfortably upright and calibrate"; return }
         guard baselineMode == mode else {
             confirmation.reset()
+            alerts.interruptRecovery()
             status = "Detection method changed — recalibrate"
             return
         }
@@ -215,6 +223,9 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         let now = ProcessInfo.processInfo.systemUptime
         if changed {
             let progress = confirmation.observeChanged(at: now)
+            if alerts.observeChanged(confirmed: progress >= confirmation.required) {
+                notifications.sendPostureChange()
+            }
             if progress >= confirmation.required {
                 status = "Posture changed — check your position"
             } else {
@@ -222,6 +233,7 @@ final class Monitor: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             }
         } else {
             confirmation.observeNotChanged(at: now)
+            alerts.observeBaseline(at: now)
             status = "Posture near baseline"
         }
     }
